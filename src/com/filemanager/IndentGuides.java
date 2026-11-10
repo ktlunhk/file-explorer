@@ -423,7 +423,7 @@ public class IndentGuides {
                 continue;
             }
             if (matches(t, i, "<!--")) {
-                int e = indexOf(t, "--" + ">", i + 4, n);
+                int e = indexOf(t, "-->", i + 4, n);
                 i = e < 0 ? n : e + 3;
                 continue;
             }
@@ -545,9 +545,22 @@ public class IndentGuides {
         active.setColor(dark ? 0xCC4CAF50 : 0xCC2E7D32);
 
         int pos = ed.getSelectionStart();
-        if (!tagMode) {
+        // In HTML/XML the cursor may sit inside <script>/<style> content: that is code, not
+        // markup, so highlight the current indent block (e.g. the function) rather than the tag pair.
+        boolean codeInTag = false;
+        if (tagMode && len <= MAX_TAG_SCAN && pos >= 0) {
+            int[] cp = findPair(t, pos, ver);
+            if (cp != null && pos >= cp[1] && pos <= cp[4]) {
+                String nm = t.subSequence(cp[2], cp[3]).toString().toLowerCase();
+                codeInTag = nm.equals("script") || nm.equals("style");
+            }
+        }
+        boolean blockMode = !tagMode || codeInTag;
+        if (blockMode) {
             computeBlock(t, pos, ver);
         }
+        // nothing to highlight as a block (e.g. top-level line in a script): fall back to the tag pair
+        boolean showPair = tagMode && !(codeInTag && blkLevel >= 0);
 
         float cw = ed.getPaint().measureText("0");
         float nudge = 1.5f * density;
@@ -582,12 +595,12 @@ public class IndentGuides {
 					? padLeft + l.getPrimaryHorizontal(Math.min(len, refLs + k))
 					: padLeft + k * indentSize * cw;
                 x -= nudge;
-                boolean act = !tagMode && blkLevel == k && ls >= blkStart && ls < blkEnd;
+                boolean act = blockMode && blkLevel == k && ls >= blkStart && ls < blkEnd;
                 canvas.drawLine(x, top, x, bottom, act ? active : line);
             }
         }
 
-        if (tagMode && len <= MAX_TAG_SCAN && pos >= 0) {
+        if (showPair && len <= MAX_TAG_SCAN && pos >= 0) {
             int[] p = findPair(t, pos, ver);
             if (p != null) {
                 int openRow = l.getLineForOffset(Math.max(0, p[1] - 1));
